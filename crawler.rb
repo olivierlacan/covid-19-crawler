@@ -11,7 +11,7 @@ USER_FLAG = true # user enters missing data (in images, js, etc)
 DEBUG_FLAG = true # saves output to "debug/" dir
 DEBUG_PAGE_FLAG = false # review each webpage manually
 
-DEBUG_ST = nil  # run for a single state
+DEBUG_ST = nil # run for a single state, example 'fl'
 
 class Crawler
 
@@ -299,52 +299,56 @@ class Crawler
   end
 
   def parse_fl(h)
+    require 'net/http'
+    require 'json'
+    require 'time'
+
+    uri = URI(@url)
+    response = Net::HTTP.get_response(uri)
+    last_modified = response['last-modified']
+    parsed_response = JSON.parse(response.body)
+
     begin
-      @driver.navigate.to @url
-      sleep(3)
-      @s = @driver.find_elements(class: "wysiwyg_content").map {|i| i.text}.select {|i| i=~/Positive Cases of COVID-19/}.first
-      offset = (@s =~ /2019 Novel Coronavirus \(COVID-19\)\nas of ([^\n]+)\n Positive Cases/)
-      if offset
-        @s = @s[offset..-1]
-        h[:date] = $1
-        if @s =~ /Deaths\n([^\s]+) – Florida Residents/
-          h[:deaths] = $1.to_i
+      data = parsed_response["features"][0]["attributes"]
+
+      if data
+        h[:date] = Time.parse(last_modified) + Time.zone_offset('EST')
+
+        if data["Positive"]
+          h[:positive] = data["Positive"]
         else
-          @errors << "missing deaths"
+          @errors << "missing positive"
         end
-        h[:positive] = 0
-        if @s =~ /\n([^\s]+) – Florida Residents/
-          h[:positive] += $1.to_i
-        end
-        if @s =~ /\n([^\s]+) – Florida Resident Presumptive Positive/
-          h[:positive] += $1.to_i
-        end
-        if @s =~ /\n([^\s]+) – Florida Cases Repatriated/
-          h[:positive] += $1.to_i
-        end
-        if @s =~ /\n([^\s]+) – Non-Florida resident/
-          h[:positive] += $1.to_i
-        end
-        if h[:positive] < 18 # as of 3/8/2020
-          @errors << "missing cases"
-        end
-        if @s =~ /\n Number of Negative Test Results\n([^\s]+)\n/
-          h[:negative] = $1.to_i
+        if data["Negative"]
+          h[:negative] = data["Negative"]
         else
           @errors << "missing negative"
         end
-        if @s =~ /\n Number of Pending Testing Results\n([^\s]+)\n/
-          h[:pending] = $1.to_i
+        if data["Pending"]
+          h[:pending] = data["Pending"]
         else
           @errors << "missing pending"
         end
-        if @s =~/\n Number of People Under Public Health Monitoring\n([^\s]+) – currently being monitored\n([^\s]+) – people monitored to date\n/
-          h[:pui] = $1.to_i
-          h[:pui_cumulative] = $2.to_i
+
+        if data["TotalTests"]
+          if data["TotalTests"] == h[:positive] + h[:negative] + h[:pending]
+            h[:tested] = data["TotalTests"]
+          else
+            @errors << "tested total doesn't match"
+          end
+        end
+
+        if data["Deaths"]
+          h[:deaths] = data["Deaths"]
+        else
+          @errors << "missing deaths"
+        end
+
+        if data["Monitor"]
+          h[:pui] = data["Monitor"]
         else
           @errors << "missing pui"
         end
-        h[:tested] = h[:positive] + h[:negative] + h[:pending]
       else
         @errors << "fl"
       end
