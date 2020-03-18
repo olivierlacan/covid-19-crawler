@@ -1,6 +1,11 @@
+require 'rubygems'
+require 'bundler'
+Bundler.setup
+
 require 'byebug'
 require 'nokogiri'
-require "selenium-webdriver"
+require 'webdrivers/geckodriver'
+require 'selenium-webdriver'
 
 USER_FLAG = true # user enters missing data (in images, js, etc)
 DEBUG_FLAG = true # saves output to "debug/" dir
